@@ -89,7 +89,7 @@ export default function Home() {
       <form onSubmit={handleSubmit} className="flex flex-col gap-4 items-center">
         <input
           type="file"
-          accept="audio/*"
+          accept=".m4a,.mp3,.wav,audio/*"
           onChange={handleFileChange}
           className="border p-2 rounded"
         />
