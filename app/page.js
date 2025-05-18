@@ -37,37 +37,80 @@ export default function Home() {
     return ffmpeg;
   };
 
+  // ffmpegを使わずWeb Audio APIで音声ファイルを分割する
   const splitAudioFile = async (file) => {
-    const ffmpeg = await loadFFmpeg();
-    const inputFileName = 'input.' + file.name.split('.').pop();
-    await ffmpeg.writeFile(inputFileName, await fetchFile(file));
-
-    // Get duration
-    await ffmpeg.exec(['-i', inputFileName]);
-    const output = await ffmpeg.readStderr();
-    const durationMatch = output.match(/Duration: (\d{2}):(\d{2}):(\d{2})/);
-    if (!durationMatch) throw new Error('Cannot get file duration');
-
-    const hours = parseInt(durationMatch[1]);
-    const minutes = parseInt(durationMatch[2]);
-    const seconds = parseInt(durationMatch[3]);
-    const totalSeconds = hours * 3600 + minutes * 60 + seconds;
-    const segments = Math.ceil(totalSeconds / 60);
+    // 1. ファイルをArrayBufferで読み込む
+    const arrayBuffer = await file.arrayBuffer();
+    // 2. AudioContextでデコード
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    const duration = audioBuffer.duration;
+    const segmentLength = 60; // 60秒ごと
+    const segments = Math.ceil(duration / segmentLength);
     setTotalSegments(segments);
 
+    // WAVエンコード関数
+    function encodeWAV(audioBuffer) {
+      const numChannels = audioBuffer.numberOfChannels;
+      const sampleRate = audioBuffer.sampleRate;
+      const format = 1; // PCM
+      const bitDepth = 16;
+      const samples = audioBuffer.length;
+      const buffer = new ArrayBuffer(44 + samples * numChannels * 2);
+      const view = new DataView(buffer);
+      // RIFF identifier
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, 36 + samples * numChannels * 2, true);
+      writeString(view, 8, 'WAVE');
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, format, true);
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * numChannels * 2, true);
+      view.setUint16(32, numChannels * 2, true);
+      view.setUint16(34, bitDepth, true);
+      writeString(view, 36, 'data');
+      view.setUint32(40, samples * numChannels * 2, true);
+      // PCM samples
+      let offset = 44;
+      for (let i = 0; i < samples; i++) {
+        for (let ch = 0; ch < numChannels; ch++) {
+          let sample = audioBuffer.getChannelData(ch)[i];
+          sample = Math.max(-1, Math.min(1, sample));
+          view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+          offset += 2;
+        }
+      }
+      return new Blob([buffer], { type: 'audio/wav' });
+    }
+    function writeString(view, offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+
+    // 3. 分割処理
     const segmentFiles = [];
     for (let i = 0; i < segments; i++) {
-      const outputFileName = `segment_${i}.wav`;
-      await ffmpeg.exec([
-        '-i', inputFileName,
-        '-ss', `${i * 60}`,
-        '-t', '60',
-        '-ac', '1',
-        '-ar', '16000',
-        outputFileName
-      ]);
-      const data = await ffmpeg.readFile(outputFileName);
-      const blob = new Blob([data], { type: 'audio/wav' });
+      const start = i * segmentLength;
+      const end = Math.min((i + 1) * segmentLength, duration);
+      const segmentDuration = end - start;
+      // 新しいAudioBufferを作成
+      const segmentBuffer = audioContext.createBuffer(
+        audioBuffer.numberOfChannels,
+        Math.floor(segmentDuration * audioBuffer.sampleRate),
+        audioBuffer.sampleRate
+      );
+      for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+        const channel = audioBuffer.getChannelData(ch).slice(
+          Math.floor(start * audioBuffer.sampleRate),
+          Math.floor(end * audioBuffer.sampleRate)
+        );
+        segmentBuffer.copyToChannel(channel, ch, 0);
+      }
+      // WAVにエンコード
+      const blob = encodeWAV(segmentBuffer);
       segmentFiles.push(blob);
     }
     return segmentFiles;
