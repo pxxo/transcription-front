@@ -282,9 +282,6 @@ export default function Home() {
           <ol className="space-y-4">
             {results.map((item, idx) => (
               <li key={idx} className="bg-gray-100 p-3 rounded shadow">
-                <div className="text-xs text-gray-500 mb-1">
-                  [{item.start.toFixed(2)}s - {item.end.toFixed(2)}s]
-                </div>
                 <div className="text-base whitespace-pre-line">{item.text}</div>
               </li>
             ))}
