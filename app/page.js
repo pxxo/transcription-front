@@ -1,8 +1,6 @@
 "use client";
 import React, { useState, useRef } from "react";
-import Image from "next/image";
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { toBlobURL, fetchFile } from '@ffmpeg/util';
+import { Document, Packer, Paragraph, TextRun } from "docx";
 
 export default function Home() {
   const [file, setFile] = useState(null);
@@ -13,8 +11,8 @@ export default function Home() {
   const [elapsed, setElapsed] = useState(null);
   const [currentSegment, setCurrentSegment] = useState(0);
   const [totalSegments, setTotalSegments] = useState(0);
+  const [wordBlob, setWordBlob] = useState(null);
   const abortRef = useRef(null);
-  const ffmpegRef = useRef(null);
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -25,19 +23,6 @@ export default function Home() {
     setTotalSegments(0);
   };
 
-  const loadFFmpeg = async () => {
-    if (ffmpegRef.current) return ffmpegRef.current;
-
-    const ffmpeg = new FFmpeg();
-    await ffmpeg.load({
-      coreURL: await toBlobURL('/ffmpeg-core.js', 'text/javascript'),
-      wasmURL: await toBlobURL('/ffmpeg-core.wasm', 'application/wasm'),
-    });
-    ffmpegRef.current = ffmpeg;
-    return ffmpeg;
-  };
-
-  // ffmpegを使わずWeb Audio APIで音声ファイルを分割する
   const splitAudioFile = async (file) => {
     // 1. ファイルをArrayBufferで読み込む
     const arrayBuffer = await file.arrayBuffer();
@@ -189,6 +174,8 @@ export default function Home() {
 
       setProgress(1);
       setElapsed(totalTime);
+      // Word生成用のBlobをセット
+      setWordBlob({ ready: true });
     } catch (err) {
       if (err.name !== "AbortError") {
         setError("API通信エラー: " + err.message);
@@ -205,6 +192,40 @@ export default function Home() {
       abortRef.current.abort();
       setLoading(false);
     }
+  };
+
+  const handleDownloadWord = () => {
+    if (!results.length) return;
+    // タイムスタンプなし、文の区切りのみ（改行）でテキストを整形
+    const doc = new Document({
+      sections: [
+        {
+          properties: {},
+          children: [
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: results.map(item => item.text).join("\n\n"),
+                  size: 24,
+                })
+              ]
+            })
+          ]
+        }
+      ]
+    });
+    Packer.toBlob(doc).then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (file?.name || "transcription") + ".docx";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+    });
   };
 
   return (
@@ -274,6 +295,14 @@ export default function Home() {
         <div className="text-green-700 font-bold mt-4">
           処理時間: {elapsed.toFixed(2)} 秒
         </div>
+      )}
+      {wordBlob && results.length > 0 && (
+        <button
+          className="bg-green-600 text-white px-4 py-2 rounded mt-2"
+          onClick={handleDownloadWord}
+        >
+          Wordファイルをダウンロード
+        </button>
       )}
     </div>
   );
