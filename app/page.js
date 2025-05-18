@@ -196,21 +196,21 @@ export default function Home() {
 
   const handleDownloadWord = () => {
     if (!results.length) return;
-    // タイムスタンプなし、文の区切りのみ（改行）でテキストを整形
+    // 各文ごとにParagraphを作成し、Word上で改行されるようにする
     const doc = new Document({
       sections: [
         {
           properties: {},
-          children: [
+          children: results.map(item =>
             new Paragraph({
               children: [
                 new TextRun({
-                  text: results.map(item => item.text).join("\n\n"),
+                  text: item.text,
                   size: 24,
                 })
               ]
             })
-          ]
+          )
         }
       ]
     });
