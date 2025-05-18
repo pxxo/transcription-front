@@ -30,7 +30,7 @@ export default function Home() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("http://oktn-dev.com/api/transcribe", {
+      const res = await fetch("https://oktn-dev.com/api/transcribe", {
         method: "POST",
         body: formData,
         signal: controller.signal,
