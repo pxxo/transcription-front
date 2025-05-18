@@ -12,6 +12,7 @@ export default function Home() {
   const [currentSegment, setCurrentSegment] = useState(0);
   const [totalSegments, setTotalSegments] = useState(0);
   const [wordBlob, setWordBlob] = useState(null);
+  const [canSubmit, setCanSubmit] = useState(false);
   const abortRef = useRef(null);
 
   const handleFileChange = (e) => {
@@ -21,6 +22,10 @@ export default function Home() {
     setProgress(0);
     setCurrentSegment(0);
     setTotalSegments(0);
+    setCanSubmit(false); // 新しいファイル選択時は送信不可
+    if (e.target.files[0]) {
+      splitAudioFile(e.target.files[0]); // ファイル選択時にセグメント計算
+    }
   };
 
   const splitAudioFile = async (file) => {
@@ -30,9 +35,10 @@ export default function Home() {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     const duration = audioBuffer.duration;
-    const segmentLength = 60; // 60秒ごと
+    const segmentLength = 15; // セグメントの長さ（秒）
     const segments = Math.ceil(duration / segmentLength);
     setTotalSegments(segments);
+    setCanSubmit(true); // セグメント計算後に送信可能に
 
     // WAVエンコード関数
     function encodeWAV(audioBuffer) {
@@ -241,7 +247,7 @@ export default function Home() {
         <div className="flex gap-2">
           <button
             type="submit"
-            disabled={!file || loading}
+            disabled={!file || loading || !canSubmit}
             className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
           >
             {loading ? "送信中..." : "音声を送信"}
